@@ -3,9 +3,9 @@
 A full-stack civic complaint portal — citizens file complaints via WhatsApp, officers manage them via a web dashboard.
 
 ```
-Citizens → WhatsApp → Twilio Webhook → Backend API → PostgreSQL
-                                              ↕
-                                    Admin Dashboard (React)
+Citizens → WhatsApp → Meta API Webhook → Backend API → PostgreSQL
+                                               ↕
+                                     Admin Dashboard (React)
 ```
 
 ---
@@ -21,7 +21,7 @@ civic-complaint-system/
 │   │   ├── routes/
 │   │   │   ├── auth.js       # Login, create officers
 │   │   │   ├── complaints.js # CRUD, filters, stats
-│   │   │   └── webhook.js    # Twilio WhatsApp handler
+│   │   │   └── webhook.js    # Meta WhatsApp API handler
 │   │   └── utils/
 │   │       ├── complaintId.js # KA-2026-00421 generator
 │   │       └── strings.js     # EN / KN / HI translations
@@ -55,7 +55,7 @@ civic-complaint-system/
 
 ### Prerequisites
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed
-- [ngrok](https://ngrok.com/) for exposing webhook to Twilio (dev only)
+- [ngrok](https://ngrok.com/) for exposing webhook to Meta API (dev only)
 
 ### Step 1 — Clone and configure
 
@@ -72,8 +72,9 @@ Fill in `.env`:
 ```env
 DB_PASSWORD=your_secure_db_password
 JWT_SECRET=a_random_64_char_string_use_openssl_rand_hex_32
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=your_auth_token
+WA_ACCESS_TOKEN=your_whatsapp_business_api_access_token
+WA_PHONE_NUMBER_ID=your_phone_number_id
+WA_VERIFY_TOKEN=your_webhook_verify_token
 STATE_CODE=KA
 ```
 
@@ -137,13 +138,17 @@ Dashboard runs at `http://localhost:5173`
 
 ---
 
-## 📱 WhatsApp Chatbot Setup (Twilio)
+## 📱 WhatsApp Chatbot Setup (Meta API)
 
-### Step 1 — Create a Twilio account
+### Step 1 — Create a Meta Developer Account
 
-1. Go to [twilio.com](https://twilio.com) and sign up (free trial works)
-2. Navigate to **Messaging → Try it out → Send a WhatsApp message**
-3. Note your **Account SID** and **Auth Token** from the Console dashboard
+1. Go to [developers.facebook.com](https://developers.facebook.com) and sign up
+2. Create an **App** and select **WhatsApp** as your product
+3. Navigate to **WhatsApp → API Setup**
+4. From the dashboard, note:
+   - **Access Token** (`WA_ACCESS_TOKEN`)
+   - **Phone Number ID** (`WA_PHONE_NUMBER_ID`)
+   - Create a **Webhook Verify Token** (any random string, e.g., `my_secure_webhook_token_123`)
 
 ### Step 2 — Expose your backend to the internet
 
@@ -157,21 +162,22 @@ ngrok http 3001
 Copy the HTTPS URL it gives you, e.g.:
 `https://abc123.ngrok-free.app`
 
-### Step 3 — Configure Twilio Webhook
+### Step 3 — Configure Meta Webhook
 
-1. In Twilio Console → **Messaging → Settings → WhatsApp Sandbox Settings**
-2. Set **"When a message comes in"** to:
+1. In Meta App Dashboard → **WhatsApp → Configuration**
+2. Set **Webhook URL** to:
    ```
    https://abc123.ngrok-free.app/api/webhook
    ```
-   Method: `HTTP POST`
-3. Save
+3. Set **Verify Token** to the same token you set in `.env` as `WA_VERIFY_TOKEN`
+4. Subscribe to `messages` and `message_status` events
+5. Save
 
 ### Step 4 — Test the chatbot
 
-1. Send "join <sandbox-keyword>" to Twilio's sandbox number (shown in Console)
-2. Then send "Hi" to start the conversation
-3. The bot will respond with the language selection menu
+1. Send a message from a verified test number to your WhatsApp Business number
+2. The bot will respond with the language selection menu
+3. Follow the conversation flow
 
 ### Step 5 — Conversation Flow
 
@@ -180,7 +186,7 @@ Citizen sends "Hi"
     → Language Selection (EN / KN / HI)
     → Main Menu:
         1. Register Complaint
-           → Category → Description → Location → Name → Photo → Confirm
+           → Category → Description → Location → Name → Phone → Photo → Confirm
            → "Your complaint ID: KA-2026-00421"
         2. Emergency Help
            → Shows helpline numbers (100, 108, 1091, 101)
@@ -271,7 +277,7 @@ POST   /api/complaints/:id/notes   Body: { note }
 
 ### Webhook
 ```
-POST   /api/webhook              Twilio WhatsApp webhook
+POST   /api/webhook              Meta WhatsApp API webhook
 POST   /api/webhook/test         Dev simulation endpoint
 ```
 
@@ -302,7 +308,7 @@ docker-compose up -d --build
 
 # Set up a reverse proxy (nginx/Caddy) with SSL
 # Point your domain → localhost:80
-# Point Twilio webhook → https://yourdomain.com/api/webhook
+# Point Meta webhook → https://yourdomain.com/api/webhook
 ```
 
 ### Option 2: Railway / Render
@@ -316,9 +322,9 @@ NODE_ENV=production
 DB_HOST=<managed-db-host>
 DB_PASSWORD=<strong-password>
 JWT_SECRET=<64-char-random-string>
-TWILIO_ACCOUNT_SID=<real-sid>
-TWILIO_AUTH_TOKEN=<real-token>
-TWILIO_WHATSAPP_NUMBER=whatsapp:+<your-number>
+WA_ACCESS_TOKEN=<your-access-token>
+WA_PHONE_NUMBER_ID=<your-phone-number-id>
+WA_VERIFY_TOKEN=<your-verify-token>
 FRONTEND_URL=https://yourdomain.com
 ```
 
@@ -351,11 +357,11 @@ Then map `'4': 'ta'` in the webhook's `LANGUAGE_SELECT` case.
 
 | Issue | Fix |
 |-------|-----|
-| Webhook not receiving messages | Ensure ngrok is running, URL is correct in Twilio Console |
+| Webhook not receiving messages | Ensure ngrok is running, URL is correct in Meta Dashboard |
 | "Invalid credentials" on login | Run `npm run migrate` to seed the default admin |
 | DB connection error | Check `DB_HOST`, `DB_PASSWORD` in `.env` |
 | Frontend shows blank page | Check browser console; ensure backend is running |
-| Twilio sends but bot doesn't respond | Check `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` in `.env` |
+| Meta API not sending messages | Check `WA_ACCESS_TOKEN`, `WA_PHONE_NUMBER_ID` in `.env` |
 
 ---
 
@@ -366,4 +372,4 @@ MIT License — Free to use and modify for civic/government projects.
 ---
 
 
-Stack: Node.js · PostgreSQL · React · Twilio WhatsApp API
+Stack: Node.js · PostgreSQL · React · Meta WhatsApp Business API
